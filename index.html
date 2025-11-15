@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Robot Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- MQTT WebSocket library -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+        }
+
+        .box {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 12px;
+            background: #f1f1f1;
+        }
+
+        label {
+            font-size: 18px;
+        }
+
+        input {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Robot IoT Control Panel</h2>
+
+    <div class="box">
+        <label>Speed</label>
+        <input type="range" min="0" max="100" value="50" oninput="sendSpeed(this.value)">
+    </div>
+
+    <div class="box">
+        <label>Kp</label>
+        <input type="number" id="kp" oninput="sendKp(this.value)">
+    </div>
+
+    <div class="box">
+        <label>Ki</label>
+        <input type="number" id="ki" oninput="sendKi(this.value)">
+    </div>
+
+    <div class="box">
+        <label>Kd</label>
+        <input type="number" id="kd" oninput="sendKd(this.value)">
+    </div>
+
+    <div class="box">
+        <label>Target Location</label>
+        <input type="number" id="loc" oninput="sendLocation(this.value)">
+    </div>
+
+    <script>
+        // --- CHANGE THESE ---
+        const MQTT_URL = "105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt";
+        const MQTT_USER = "hivemq.webclient.1762934161918";
+        const MQTT_PASS = "58jb.1<,6FIwmqHdCD>R";
+
+        // Connect to HiveMQ Cloud WebSocket
+        const client = mqtt.connect(MQTT_URL, {
+            username: MQTT_USER,
+            password: MQTT_PASS
+        });
+
+        client.on("connect", function () {
+            console.log("Connected to HiveMQ Cloud!");
+        });
+
+        client.on("error", function (err) {
+            console.log("Connection error: ", err);
+        });
+
+        // Publish functions
+        function sendSpeed(val) {
+            client.publish("robot/speed", String(val));
+        }
+        function sendKp(val) {
+            client.publish("robot/pid/kp", String(val));
+        }
+        function sendKi(val) {
+            client.publish("robot/pid/ki", String(val));
+        }
+        function sendKd(val) {
+            client.publish("robot/pid/kd", String(val));
+        }
+        function sendLocation(val) {
+            client.publish("robot/location", String(val));
+        }
+
+    </script>
+</body>
+
+</html>
