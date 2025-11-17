@@ -42,17 +42,17 @@
 
     <div class="box">
         <label>Kp</label>
-        <input type="number" id="kp" oninput="sendKp(this.value)">
+        <input type="number" id="kp" oninput="sendPID()">
     </div>
 
     <div class="box">
         <label>Ki</label>
-        <input type="number" id="ki" oninput="sendKi(this.value)">
+        <input type="number" id="ki" oninput="sendPID()">
     </div>
 
     <div class="box">
         <label>Kd</label>
-        <input type="number" id="kd" oninput="sendKd(this.value)">
+        <input type="number" id="kd" oninput="sendPID()">
     </div>
 
     <div class="box">
@@ -61,43 +61,53 @@
     </div>
 
     <script>
-        // --- CHANGE THESE ---
-        const MQTT_URL = "105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt";
+        // MQTT WebSocket config
+        const MQTT_URL = "wss://105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt";
         const MQTT_USER = "hivemq.webclient.1762934161918";
         const MQTT_PASS = "58jb.1<,6FIwmqHdCD>R";
 
-        // Connect to HiveMQ Cloud WebSocket
         const client = mqtt.connect(MQTT_URL, {
             username: MQTT_USER,
-            password: MQTT_PASS
+            password: MQTT_PASS,
+            clean: true,
+            connectTimeout: 4000,
+            reconnectPeriod: 2000
         });
 
         client.on("connect", function () {
-            console.log("Connected to HiveMQ Cloud!");
+            console.log("Connected to HiveMQ Cloud WebSocket!");
         });
 
         client.on("error", function (err) {
-            console.log("Connection error: ", err);
+            console.log("Connection error:", err);
         });
 
-        // Publish functions
+        // ---- JSON Publish Functions (match ESP8266) ----
+
         function sendSpeed(val) {
-            client.publish("robot/speed", String(val));
+            client.publish("solar/control",
+                JSON.stringify({ cmd: "set_speed", value: Number(val) })
+            );
         }
-        function sendKp(val) {
-            client.publish("robot/pid/kp", String(val));
+
+        function sendPID() {
+            const kp = Number(document.getElementById("kp").value);
+            const ki = Number(document.getElementById("ki").value);
+            const kd = Number(document.getElementById("kd").value);
+
+            client.publish("solar/control",
+                JSON.stringify({ cmd: "set_pid_h", kp, ki, kd })
+            );
         }
-        function sendKi(val) {
-            client.publish("robot/pid/ki", String(val));
-        }
-        function sendKd(val) {
-            client.publish("robot/pid/kd", String(val));
-        }
+
         function sendLocation(val) {
-            client.publish("robot/location", String(val));
+            client.publish("solar/control",
+                JSON.stringify({ cmd: "set_threshold", value: Number(val) })
+            );
         }
 
     </script>
+
 </body>
 
 </html>
