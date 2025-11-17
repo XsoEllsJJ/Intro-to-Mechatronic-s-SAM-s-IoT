@@ -1,113 +1,129 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>Robot Control Panel</title>
+    <title>Solar Tracker Control Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- MQTT WebSocket library -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
     <style>
         body {
             font-family: Arial;
             padding: 20px;
+            background: #e7ecf2;
         }
+        h2 { text-align: center; }
 
-        .box {
-            margin-bottom: 20px;
-            padding: 15px;
+        .card {
+            background: white;
+            padding: 18px;
             border-radius: 12px;
-            background: #f1f1f1;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }
 
-        label {
+        button {
+            padding: 12px 22px;
             font-size: 18px;
+            border: none;
+            border-radius: 10px;
+            margin: 5px;
+            cursor: pointer;
         }
+        .on { background: #4CAF50; color: white; }
+        .off { background: #d9534f; color: white; }
+        .home { background: #0275d8; color: white; }
 
-        input {
+        input[type=range] {
             width: 100%;
+        }
+        input[type=number] {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
         }
     </style>
 </head>
 
 <body>
+    <h2>Solar Tracker Dashboard</h2>
 
-    <h2>Robot IoT Control Panel</h2>
-
-    <div class="box">
-        <label>Speed</label>
-        <input type="range" min="0" max="100" value="50" oninput="sendSpeed(this.value)">
+    <!-- STATUS -->
+    <div class="card">
+        <h3>Status</h3>
+        <p id="status">Not connected</p>
     </div>
 
-    <div class="box">
+    <!-- CONTROLS -->
+    <div class="card">
+        <h3>System Control</h3>
+        <button class="on" onclick="sendOn()">ON</button>
+        <button class="off" onclick="sendOff()">OFF</button>
+        <button class="home" onclick="sendHome()">HOME</button>
+    </div>
+
+    <div class="card">
+        <h3>Tracking Speed</h3>
+        <input type="range" min="0" max="5" value="1" step="0.1"
+               oninput="sendSpeed(this.value)">
+    </div>
+
+    <div class="card">
+        <h3>LDR Threshold</h3>
+        <input type="number" id="thr" value="50"
+               oninput="sendThreshold(this.value)">
+    </div>
+
+    <div class="card">
+        <h3>PID (H + V)</h3>
         <label>Kp</label>
-        <input type="number" id="kp" oninput="sendPID()">
-    </div>
-
-    <div class="box">
+        <input type="number" id="kp" step="0.01">
         <label>Ki</label>
-        <input type="number" id="ki" oninput="sendPID()">
-    </div>
-
-    <div class="box">
+        <input type="number" id="ki" step="0.01">
         <label>Kd</label>
-        <input type="number" id="kd" oninput="sendPID()">
+        <input type="number" id="kd" step="0.01">
+        <button class="home" onclick="sendPID()">Send PID</button>
     </div>
 
-    <div class="box">
-        <label>Target Location</label>
-        <input type="number" id="loc" oninput="sendLocation(this.value)">
-    </div>
+<script>
+    const MQTT_URL = "wss://105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt";
+    const MQTT_USER = "hivemq.webclient.1762934161918";
+    const MQTT_PASS = "58jb.1<,6FIwmqHdCD>R";
 
-    <script>
-        // MQTT WebSocket config
-        const MQTT_URL = "wss://105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt";
-        const MQTT_USER = "hivemq.webclient.1762934161918";
-        const MQTT_PASS = "58jb.1<,6FIwmqHdCD>R";
+    const client = mqtt.connect(MQTT_URL, {
+        username: MQTT_USER,
+        password: MQTT_PASS,
+        clean: true
+    });
 
-        const client = mqtt.connect(MQTT_URL, {
-            username: MQTT_USER,
-            password: MQTT_PASS,
-            clean: true,
-            connectTimeout: 4000,
-            reconnectPeriod: 2000
+    client.on("connect", () => {
+        document.getElementById("status").innerHTML = "Connected";
+        client.subscribe("solar/status");
+    });
+
+    client.on("message", (topic, msg) => {
+        document.getElementById("status").innerHTML = "RP2040: " + msg;
+    });
+
+    // MQTT publish helpers
+    function pub(obj) {
+        client.publish("solar/control", JSON.stringify(obj));
+    }
+
+    function sendOn()          { pub({cmd:"on"}); }
+    function sendOff()         { pub({cmd:"off"}); }
+    function sendHome()        { pub({cmd:"home"}); }
+    function sendSpeed(v)      { pub({cmd:"set_speed", value:Number(v)}); }
+    function sendThreshold(v)  { pub({cmd:"set_threshold", value:Number(v)}); }
+
+    function sendPID() {
+        pub({
+            cmd: "set_pid",
+            kp: Number(document.getElementById("kp").value),
+            ki: Number(document.getElementById("ki").value),
+            kd: Number(document.getElementById("kd").value)
         });
-
-        client.on("connect", function () {
-            console.log("Connected to HiveMQ Cloud WebSocket!");
-        });
-
-        client.on("error", function (err) {
-            console.log("Connection error:", err);
-        });
-
-        // ---- JSON Publish Functions (match ESP8266) ----
-
-        function sendSpeed(val) {
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "set_speed", value: Number(val) })
-            );
-        }
-
-        function sendPID() {
-            const kp = Number(document.getElementById("kp").value);
-            const ki = Number(document.getElementById("ki").value);
-            const kd = Number(document.getElementById("kd").value);
-
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "set_pid_h", kp, ki, kd })
-            );
-        }
-
-        function sendLocation(val) {
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "set_threshold", value: Number(val) })
-            );
-        }
-
-    </script>
+    }
+</script>
 
 </body>
-
 </html>
