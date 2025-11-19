@@ -2,150 +2,130 @@
 <html>
 
 <head>
-    <title>Solar Tracker Control</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
+    <meta charset="utf-8" />
+    <title>Solar Tracker Dashboard</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <style>
         body {
-            font-family: Arial;
-            padding: 20px;
+            font-family: Arial, sans-serif;
+            margin: 18px;
         }
 
         .box {
-            padding: 15px;
-            margin-bottom: 20px;
-            background: #f0f0f0;
-            border-radius: 12px;
+            background: #f6f6f8;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 12px;
         }
 
         button {
-            padding: 10px 15px;
-            margin: 5px;
-            font-size: 16px;
+            padding: 8px 12px;
             border-radius: 8px;
+            margin: 6px;
+        }
+
+        label {
+            display: inline-block;
+            width: 90px;
         }
     </style>
 </head>
 
 <body>
-    <h2>Solar Tracker IoT Dashboard</h2>
+    <h2>Solar Tracker Control & Error Graph</h2>
 
-    <!-- Control Buttons -->
     <div class="box">
         <button onclick="sendCmd('on')">System ON</button>
         <button onclick="sendCmd('off')">System OFF</button>
-        <button onclick="sendCmd('home')">Home Position</button>
     </div>
 
-    <!-- Speed -->
     <div class="box">
-        <label>Tracking Speed</label>
-        <input type="range" min="0" max="5" value="1" oninput="sendSpeed(this.value)">
+        <label>Speed</label>
+        <input id="speed" type="range" min="0" max="100" step="1" value="25" oninput="sendSpeed(this.value)" />
+        <span id="speedVal">25</span>
     </div>
 
-    <!-- PID -->
     <div class="box">
-        <label>Kp</label><input id="kp" type="number" step="0.01">
-        <label>Ki</label><input id="ki" type="number" step="0.01">
-        <label>Kd</label><input id="kd" type="number" step="0.01">
-        <button onclick="sendPID()">Update PID</button>
+        <label>Duration</label>
+        <input id="duration" type="number" value="100">
+        <button onclick="sendDuration(document.getElementById('duration').value)">Set</button>
     </div>
 
-    <!-- Threshold -->
     <div class="box">
-        <label>LDR Threshold</label>
-        <input type="number" id="thr" oninput="sendThreshold(this.value)">
+        <label>Tolerance</label>
+        <input id="tolerance" type="number" value="2000">
+        <button onclick="sendTolerance(document.getElementById('tolerance').value)">Set</button>
     </div>
 
-    <!-- Graph -->
     <div class="box">
-        <h3>Error Graph</h3>
-        <canvas id="errorChart"></canvas>
+        <label>Threshold</label>
+        <input id="thr" type="number" value="3000">
+        <button onclick="sendThreshold(document.getElementById('thr').value)">Set</button>
+    </div>
+
+    <div class="box">
+        <h3>Tracking Error (H & V)</h3>
+        <canvas id="errorChart" width="800" height="300"></canvas>
     </div>
 
     <script>
-        //////////////////////////////////////////////////////////////
-        // MQTT CONNECTION
-        //////////////////////////////////////////////////////////////
-
         const client = mqtt.connect("wss://105ec4fd38e24b628e90f82d2a916a24.s1.eu.hivemq.cloud:8884/mqtt", {
             username: "hivemq.webclient.1762934161918",
             password: "58jb.1<,6FIwmqHdCD>R"
         });
 
         client.on("connect", () => {
-            console.log("MQTT connected!");
+            console.log("MQTT connected");
             client.subscribe("solar/status");
         });
 
         client.on("message", (topic, msg) => {
-            console.log("Status:", msg.toString());
-
-            let val = parseFloat(msg.toString());
-            addErrorData(val);
+            try {
+                const data = JSON.parse(msg.toString());
+                if (data.h !== undefined && data.v !== undefined) addErrorData(data.h, data.v);
+                else if (data.info) console.log("Info:", data.info);
+            } catch (e) { console.log("Non-JSON msg:", msg.toString()); }
         });
 
-        //////////////////////////////////////////////////////////////
-        // COMMAND SEND FUNCTIONS
-        //////////////////////////////////////////////////////////////
-
-        function sendCmd(command) {
-            client.publish("solar/control", JSON.stringify({ cmd: command }));
-        }
-
+        // Publish commands
+        function sendCmd(cmd) { client.publish("solar/control", JSON.stringify({ cmd: cmd })); }
         function sendSpeed(v) {
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "speed", value: Number(v) }));
+            document.getElementById("speedVal").innerText = v;
+            client.publish("solar/control", JSON.stringify({ cmd: "speed", value: Number(v) }));
         }
+        function sendDuration(v) { client.publish("solar/control", JSON.stringify({ cmd: "duration", value: Number(v) })); }
+        function sendTolerance(v) { client.publish("solar/control", JSON.stringify({ cmd: "tolerance", value: Number(v) })); }
+        function sendThreshold(v) { client.publish("solar/control", JSON.stringify({ cmd: "threshold", value: Number(v) })); }
 
-        function sendThreshold(v) {
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "threshold", value: Number(v) }));
-        }
-
-        function sendPID() {
-            const kp = Number(document.getElementById("kp").value);
-            const ki = Number(document.getElementById("ki").value);
-            const kd = Number(document.getElementById("kd").value);
-
-            client.publish("solar/control",
-                JSON.stringify({ cmd: "pid", kp, ki, kd }));
-        }
-
-        //////////////////////////////////////////////////////////////
-        // REAL-TIME CHART
-        //////////////////////////////////////////////////////////////
-
-        const ctx = document.getElementById("errorChart");
+        // Chart.js
+        const ctx = document.getElementById("errorChart").getContext("2d");
         const chart = new Chart(ctx, {
             type: "line",
             data: {
                 labels: [],
-                datasets: [{
-                    label: "Tracking Error",
-                    data: [],
-                    borderWidth: 2
-                }]
+                datasets: [
+                    { label: "Horizontal Error", data: [], borderWidth: 2, borderColor: "rgb(255,99,71)", fill: false },
+                    { label: "Vertical Error", data: [], borderWidth: 2, borderColor: "rgb(54,162,235)", fill: false }
+                ]
             },
-            options: {
-                animation: false
-            }
+            options: { animation: false, scales: { y: { beginAtZero: false } } }
         });
 
-        function addErrorData(value) {
-            if (chart.data.labels.length > 50) {
+        function addErrorData(h, v) {
+            const max = 120;
+            if (chart.data.labels.length > max) {
                 chart.data.labels.shift();
                 chart.data.datasets[0].data.shift();
+                chart.data.datasets[1].data.shift();
             }
             chart.data.labels.push("");
-            chart.data.datasets[0].data.push(value);
+            chart.data.datasets[0].data.push(h);
+            chart.data.datasets[1].data.push(v);
             chart.update();
         }
     </script>
-
 </body>
 
 </html>
